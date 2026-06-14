@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>x86-64 Stack Hacking — Esame di Maturità</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@300;400;600;700&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/base16/chalk.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cpp.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/x86asm.min.js"></script>
+<style>
+  :root {
+    --bg:       #07080d;
+    --bg2:      #0d0f1a;
+    --bg3:      #111426;
+    --border:   #1e2440;
+    --accent:   #00e5c8;
+    --accent2:  #ff4f7b;
+    --accent3:  #f5c542;
+    --dim:      #3a4060;
+    --text:     #c8d0e8;
+    --text-dim: #606888;
+    --glow:     0 0 18px #00e5c860;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 17px;
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      to bottom, transparent 0px, transparent 3px,
+      rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 4px
+    );
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  /* ── HEADER ── */
+  header {
+    position: relative;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    padding: 4rem 2rem;
+    overflow: hidden;
+  }
+
+  .header-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(var(--border) 1px, transparent 1px),
+      linear-gradient(90deg, var(--border) 1px, transparent 1px);
+    background-size: 60px 60px;
+    opacity: 0.35;
+  }
+
+  .header-glow {
+    position: absolute;
+    width: 700px; height: 700px;
+    background: radial-gradient(ellipse, #00e5c814 0%, transparent 70%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .tag-line {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.3em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 1.4rem;
+    opacity: 0;
+    animation: fadeUp 0.6s 0.2s forwards;
+  }
+
+  h1 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: clamp(2.8rem, 7vw, 6rem);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+    color: #fff;
+    opacity: 0;
+    animation: fadeUp 0.7s 0.35s forwards;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .subtitle {
+    margin-top: 1.4rem;
+    font-size: 1.1rem;
+    color: var(--text-dim);
+    font-weight: 300;
+    letter-spacing: 0.05em;
+    max-width: 560px;
+    opacity: 0;
+    animation: fadeUp 0.7s 0.5s forwards;
+  }
+
+  .badge-row {
+    display: flex;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 2.2rem;
+    opacity: 0;
+    animation: fadeUp 0.7s 0.65s forwards;
+  }
+
+  .badge {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.25rem 0.75rem;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+  }
+
+  .scroll-hint {
+    position: absolute;
+    bottom: 2.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    opacity: 0;
+    animation: fadeUp 0.7s 1s forwards;
+    color: var(--text-dim);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+  }
+
+  .scroll-arrow {
+    width: 22px; height: 22px;
+    border-right: 2px solid var(--accent);
+    border-bottom: 2px solid var(--accent);
+    transform: rotate(45deg);
+    animation: bounce 1.4s ease-in-out infinite;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(7,8,13,0.88);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    display: flex;
+    align-items: center;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  nav::-webkit-scrollbar { display: none; }
+
+  .nav-brand {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    padding: 1rem 1.5rem 1rem 0;
+    border-right: 1px solid var(--border);
+    margin-right: 1rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  nav a {
+    color: var(--text-dim);
+    text-decoration: none;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    padding: 1rem 1rem;
+    white-space: nowrap;
+    transition: color 0.2s;
+    flex-shrink: 0;
+  }
+
+  nav a:hover { color: var(--accent); }
+
+  /* ── MAIN ── */
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 2rem 6rem;
+  }
+
+  /* ── CONCEPTS ── */
+  .concepts {
+    margin: 5rem 0;
+    padding: 2.5rem;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: 2px;
+    opacity: 0;
+    transform: translateY(24px);
+    transition: opacity 0.6s, transform 0.6s;
+  }
+
+  .concepts.visible { opacity: 1; transform: none; }
+
+  .section-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.3em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  h2 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 2rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 0.5rem;
+  }
+
+  h2 span { color: var(--accent); }
+
+  .concept-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+    margin-top: 1.8rem;
+  }
+
+  .concept-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 1.2rem;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+
+  .concept-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+
+  .concept-card .reg {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 1rem;
+    color: var(--accent);
+    margin-bottom: 0.4rem;
+  }
+
+  .concept-card p { font-size: 0.88rem; color: var(--text-dim); line-height: 1.5; }
+
+  /* ── DEMO ── */
+  .demo-section {
+    margin: 4.5rem 0;
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.6s, transform 0.6s;
+  }
+
+  .demo-section.visible { opacity: 1; transform: none; }
+
+  .demo-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+  }
+
+  .demo-number {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 3rem;
+    color: var(--border);
+    line-height: 1;
+    flex-shrink: 0;
+    user-select: none;
+  }
+
+  .demo-meta { flex: 1; min-width: 200px; }
+
+  .demo-meta h3 {
+    font-family: 'Rajdhani', sans-serif;
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 0.3rem;
+  }
+
+  .demo-meta h3 span { color: var(--accent); }
+  .demo-meta p { color: var(--text-dim); font-size: 0.92rem; line-height: 1.5; }
+
+  .compiler-badges { display: flex; gap: 0.5rem; margin-top: 0.8rem; flex-wrap: wrap; }
+
+  .cbadge {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem;
+    padding: 0.2rem 0.6rem;
+    border-radius: 3px;
+    letter-spacing: 0.08em;
+  }
+
+  .cbadge.gpp   { background: #1a2e1a; color: #6ecc6e; border: 1px solid #2d5a2d; }
+  .cbadge.clang { background: #1a1a2e; color: #6e8ecc; border: 1px solid #2d3d5a; }
+
+  /* ── NOTE BOXES ── */
+  .note-box {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent3);
+    border-radius: 2px;
+    padding: 1rem 1.2rem;
+    margin: 1.2rem 0;
+    font-size: 0.88rem;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+
+  .note-box .note-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--accent3);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+
+  .note-box code, .warn-box code {
+    font-family: 'Share Tech Mono', monospace;
+    background: #ffffff0f;
+    padding: 0.1em 0.35em;
+    border-radius: 3px;
+    font-size: 0.85em;
+    color: var(--accent);
+  }
+
+  .warn-box {
+    background: #1a0d10;
+    border: 1px solid #3d1020;
+    border-left: 3px solid var(--accent2);
+    border-radius: 2px;
+    padding: 1rem 1.2rem;
+    margin: 1.2rem 0;
+    font-size: 0.88rem;
+    color: #c87080;
+    line-height: 1.6;
+  }
+
+  .warn-box .note-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.7rem;
+    color: var(--accent2);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+
+  /* ── CODE BLOCK ── */
+  .code-wrap {
+    position: relative;
+    margin: 1.5rem 0;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 4px 32px #00000066;
+  }
+
+  .code-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #111525;
+    border-bottom: 1px solid var(--border);
+    padding: 0.55rem 1rem;
+  }
+
+  .code-dots { display: flex; gap: 6px; }
+  .code-dots span { width: 12px; height: 12px; border-radius: 50%; }
+  .code-dots span:nth-child(1) { background: #ff5f57; }
+  .code-dots span:nth-child(2) { background: #febc2e; }
+  .code-dots span:nth-child(3) { background: #28c840; }
+
+  .code-filename {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+  }
+
+  .code-lang {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.65rem;
+    color: var(--dim);
+    letter-spacing: 0.1em;
+  }
+
+  .code-wrap pre { margin: 0 !important; border-radius: 0 !important; }
+
+  .code-wrap pre code {
+    font-family: 'Space Mono', monospace !important;
+    font-size: 0.8rem !important;
+    line-height: 1.65 !important;
+    padding: 1.4rem 1.5rem !important;
+    background: #0c0f1c !important;
+  }
+
+  .hljs { background: #0c0f1c !important; }
+  .hljs-comment { color: #3d5060 !important; font-style: italic; }
+  .hljs-keyword { color: #7cb8e8 !important; }
+  .hljs-built_in { color: #82c4a0 !important; }
+  .hljs-string  { color: #e8b87c !important; }
+  .hljs-number  { color: #c49fe8 !important; }
+  .hljs-title   { color: #00e5c8 !important; }
+  .hljs-type    { color: #82c4a0 !important; }
+  .hljs-meta    { color: #e86060 !important; }
+
+  /* ── OUTPUT PANEL ── */
+  .output-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    margin-bottom: 0;
+    padding: 0.45rem 1rem;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    color: var(--text-dim);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.12em;
+    cursor: pointer;
+    transition: border-color 0.2s, color 0.2s;
+    text-transform: uppercase;
+  }
+
+  .output-toggle-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  .output-toggle-btn .arrow {
+    display: inline-block;
+    transition: transform 0.25s;
+    font-style: normal;
+  }
+
+  .output-toggle-btn.open .arrow { transform: rotate(90deg); }
+
+  .output-panel {
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.35s cubic-bezier(0.4,0,0.2,1), opacity 0.3s;
+    opacity: 0;
+  }
+
+  .output-panel.open {
+    max-height: 600px;
+    opacity: 1;
+  }
+
+  .output-inner {
+    margin-top: 0.5rem;
+    border: 1px solid var(--border);
+    border-top: 2px solid var(--accent);
+    border-radius: 0 4px 4px 4px;
+    background: #060810;
+    overflow: hidden;
+  }
+
+  .output-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #0b0d18;
+    border-bottom: 1px solid var(--border);
+    padding: 0.45rem 1rem;
+  }
+
+  .output-bar-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem;
+    color: var(--accent);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+
+  .output-bar-note {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.62rem;
+    color: var(--dim);
+    letter-spacing: 0.08em;
+  }
+
+  .output-pre {
+    margin: 0;
+    padding: 1.1rem 1.4rem;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.79rem;
+    line-height: 1.7;
+    color: #8bc4a8;
+    white-space: pre;
+    overflow-x: auto;
+  }
+
+  .output-pre .addr  { color: #c49fe8; }
+  .output-pre .kw    { color: var(--accent); }
+  .output-pre .ellip { color: var(--dim); }
+
+  /* ── COMPILER DIFF ── */
+  .compiler-diff {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+    margin: 1.5rem 0;
+  }
+
+  @media (max-width: 700px) { .compiler-diff { grid-template-columns: 1fr; } }
+
+  .diff-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.15em;
+    padding: 0.35rem 0.8rem;
+    border-radius: 3px 3px 0 0;
+    display: inline-block;
+  }
+
+  .diff-label.gpp   { background: #1a2e1a; color: #6ecc6e; }
+  .diff-label.clang { background: #1a1a2e; color: #6e8ecc; }
+
+  .diff-block .code-wrap { margin-top: 0; border-radius: 0 4px 4px 4px; }
+
+  /* ── DIVIDER ── */
+  .section-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 3rem 0;
+    position: relative;
+  }
+
+  .section-divider::after {
+    content: '//';
+    position: absolute;
+    top: -0.65rem;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg);
+    padding: 0 1rem;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.75rem;
+    color: var(--dim);
+  }
+
+  /* ── FOOTER ── */
+  footer {
+    text-align: center;
+    padding: 2.5rem;
+    border-top: 1px solid var(--border);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 0.72rem;
+    color: var(--dim);
+    letter-spacing: 0.15em;
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes bounce {
+    0%, 100% { transform: rotate(45deg) translateY(0); }
+    50%       { transform: rotate(45deg) translateY(6px); }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="header-grid"></div>
+  <div class="header-glow"></div>
+  <div class="tag-line">x86-64 · Inline Assembly · C++</div>
+  <h1>Stack <span>Hacking</span></h1>
+  <p class="subtitle">Analisi e dimostrazione della manipolazione dello stack, dei registri e del return address in C++ con inline assembly.</p>
+  <div class="badge-row">
+    <span class="badge">RBP / RSP</span>
+    <span class="badge">RIP</span>
+    <span class="badge">Return Address</span>
+    <span class="badge">Segmentation Fault</span>
+    <span class="badge">g++ · clang++</span>
+  </div>
+  <div class="scroll-hint">
+    <span>SCORRI</span>
+    <div class="scroll-arrow"></div>
+  </div>
+</header>
+
+<!-- NAV -->
+<nav>
+  <span class="nav-brand">STACK_HACK.CPP</span>
+  <a href="#concetti">CONCETTI</a>
+  <a href="#sezione1">§1 — RIP &amp; RBP</a>
+  <a href="#sezione2">§2 — MEMORY HACK</a>
+  <a href="#sezione3">§3 — LOOP ASSEMBLY</a>
+</nav>
+
+<!-- MAIN -->
+<main>
+
+  <!-- CONCEPTS -->
+  <section class="concepts reveal" id="concetti">
+    <div class="section-label">Note generali</div>
+    <h2>Concetti <span>fondamentali</span></h2>
+    <p style="color:var(--text-dim); font-size:0.93rem; margin-top:0.5rem;">
+      Prima di leggere il codice, è utile richiamare il significato dei registri coinvolti e il comportamento dello stack.
+    </p>
+
+    <div class="concept-grid">
+      <div class="concept-card">
+        <div class="reg">%RBP — Base Pointer</div>
+        <p>Punta alla base del frame corrente dello stack. Le variabili locali vengono allocate <em>sotto</em> l'indirizzo da lui puntato (indirizzi di memoria più bassi).</p>
+      </div>
+      <div class="concept-card">
+        <div class="reg">%RSP — Stack Pointer</div>
+        <p>Punta alla cima dello stack (indirizzo più basso attualmente occupato). Ogni <code>push</code> decrementa RSP di 8 byte; ogni <code>pop</code> lo incrementa.</p>
+      </div>
+      <div class="concept-card">
+        <div class="reg">%RIP — Instruction Pointer</div>
+        <p>Contiene l'indirizzo dell'istruzione in esecuzione. Non è accessibile direttamente con <code>mov</code>: si usa <code>leaq (%%rip), %reg</code>. Scrivere in RIP causa <strong>Segmentation Fault</strong>.</p>
+      </div>
+      <div class="concept-card">
+        <div class="reg">Stack — Direzione</div>
+        <p>Lo stack parte dagli indirizzi <strong>alti</strong> e cresce verso quelli <strong>bassi</strong>. RBP segna il confine del frame; RSP si sposta ad ogni push/pop.</p>
+      </div>
+      <div class="concept-card">
+        <div class="reg">Return Address</div>
+        <p>Al momento di una <code>call</code>, l'indirizzo dell'istruzione successiva viene messo in cima allo stack. Sostituendolo con <code>&amp;func</code> prima del <code>ret</code>, si controlla dove andrà il flusso.</p>
+      </div>
+      <div class="concept-card">
+        <div class="reg">Segmentation Fault</div>
+        <p>Errore generato dall'OS quando un programma accede a memoria non permessa. Scrivere direttamente in RIP tramite <code>mov</code> ne è un esempio classico.</p>
+      </div>
+    </div>
+
+    <div class="note-box" style="margin-top:1.5rem;">
+      <div class="note-title">ℹ️ Inline Assembly — AT&amp;T syntax</div>
+      Nell'inline assembly GCC/Clang la sintassi è <strong>AT&amp;T</strong>: il sorgente viene prima, la destinazione dopo (<code>mov src, dst</code>), al contrario dell'Intel. I registri hanno il prefisso <code>%%</code> e i segnaposto per le variabili C++ sono <code>%0, %1, …</code>
+    </div>
+
+    <div class="note-box">
+      <div class="note-title">ℹ️ Etichette nel codice macchina</div>
+      I label (<code>func:</code>, <code>main:</code>) non esistono nel binario finale: esistono solo nello pseudo-assembly generato dal compilatore per debug. A runtime si passa direttamente da indirizzo a indirizzo.
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- SEZIONE 1 -->
+  <section class="demo-section reveal" id="sezione1">
+    <div class="section-label">Sezione 1 di 3</div>
+    <div class="demo-header">
+      <div class="demo-number">01</div>
+      <div class="demo-meta">
+        <h3>Print di <span>RBP, RIP</span> e Segfault</h3>
+        <p>Si legge il valore corrente di RBP con <code>mov</code> e si ottiene l'indirizzo puntato da RIP con <code>leaq (%%rip)</code>. Dereferenziando il puntatore a RIP si legge il codice macchina del programma. Si mostra anche perché tentare di <em>scrivere</em> in RIP via <code>mov</code> provoca un Segmentation Fault.</p>
+        <div class="compiler-badges">
+          <span class="cbadge gpp">g++</span>
+          <span class="cbadge clang">clang++</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="note-box">
+      <div class="note-title">📌 Nota chiave</div>
+      <code>leaq (%%rip), %0</code> non scrive dentro RIP: recupera l'indirizzo a cui RIP punta e lo copia nella variabile C++. Il vero RIP resta immutato.
+    </div>
+
+    <div class="warn-box">
+      <div class="note-title">⚠️ Segfault — scrittura in RIP</div>
+      <code>movq %0, (%%rip)</code> tenta di scrivere direttamente nel registro RIP: l'OS lo intercetta e termina il processo con SIGSEGV. RIP può essere alterato legalmente solo con <code>call</code>, <code>jmp</code> o <code>ret</code>.
+    </div>
+
+    <div class="code-wrap">
+      <div class="code-topbar">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-filename">01_rip_rbp_segfault.cpp</span>
+        <span class="code-lang">C++ / x86-64 ASM</span>
+      </div>
+      <pre><code class="language-cpp">#include &lt;iostream&gt;
+#include &lt;cstdint&gt;
+
+int main(void)
+{
+    long* RIP;
+    long* RBP;
+
+    asm volatile (
+        "leaq (%%rip), %0\n\t"
+        "movq %%rbp,   %1\n\t"
+        : "=r"(RIP), "=r"(RBP)
+    );
+
+    std::cout &lt;&lt; "CELLA DI MEMORIA PUNTATA DA RBP: " &lt;&lt; RBP &lt;&lt; "\n";
+    std::cout &lt;&lt; "CELLA DI MEMORIA PUNTATA DA RIP: " &lt;&lt; RIP &lt;&lt; "\n";
+    std::cout &lt;&lt; std::endl;
+    std::cout &lt;&lt; "VALORE DENTRO LA CELLA DI MEMORIA PUNTATA DA RBP: " &lt;&lt; std::hex &lt;&lt; *RBP &lt;&lt; "\n";
+    std::cout &lt;&lt; "VALORE DENTRO LA CELLA DI MEMORIA PUNTATA DA RIP: " &lt;&lt; std::hex &lt;&lt; *(RIP) &lt;&lt; "\n";
+}</code></pre>
+    </div>
+
+    <button class="output-toggle-btn" onclick="toggleOutput(this)">
+      <i class="arrow">▶</i> MOSTRA OUTPUT
+    </button>
+    <div class="output-panel">
+      <div class="output-inner">
+        <div class="output-bar">
+          <span class="output-bar-label">OUTPUT — 01_rip_rbp_segfault</span>
+          <span class="output-bar-note">clang++ / g++ (risultato analogo)</span>
+        </div>
+        <pre class="output-pre"><span class="kw">CELLA DI MEMORIA PUNTATA DA RBP:</span> <span class="addr">0x3e2a2ffc90</span>
+<span class="kw">CELLA DI MEMORIA PUNTATA DA RIP:</span> <span class="addr">0x7ff68bb614a6</span>
+
+<span class="kw">VALORE DENTRO LA CELLA DI MEMORIA PUNTATA DA RBP:</span> <span class="addr">1</span>
+<span class="kw">VALORE DENTRO LA CELLA DI MEMORIA PUNTATA DA RIP:</span> <span class="addr">48e88948</span></pre>
+      </div>
+    </div>
+
+    <div class="section-label" style="margin-top:2.5rem;">Differenze tra compilatori — funzione vuota</div>
+    <div class="compiler-diff">
+      <div class="diff-block">
+        <span class="diff-label gpp">g++ — funzione vuota</span>
+        <div class="code-wrap">
+          <div class="code-topbar">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-filename">output g++</span>
+            <span class="code-lang">x86-64 ASM</span>
+          </div>
+          <pre><code class="language-x86asm">0000000140001450 &lt;func()&gt;:
+    140001450:  55          push   rbp
+    140001451:  48 89 e5    mov    rbp,rsp
+    140001454:  90          nop
+    140001455:  5d          pop    rbp
+    140001456:  c3          ret</code></pre>
+        </div>
+      </div>
+      <div class="diff-block">
+        <span class="diff-label clang">clang++ — funzione vuota</span>
+        <div class="code-wrap">
+          <div class="code-topbar">
+            <div class="code-dots"><span></span><span></span><span></span></div>
+            <span class="code-filename">output clang++</span>
+            <span class="code-lang">x86-64 ASM</span>
+          </div>
+          <pre><code class="language-x86asm">0000000140001450 &lt;func()&gt;:
+    140001450:  c3          ret
+    140001451:  66 66 ...   cs nop ; NOP padding</code></pre>
+        </div>
+      </div>
+    </div>
+    <div class="note-box">
+      <div class="note-title">📌 Perché differiscono?</div>
+      <code>g++</code> genera il prologo/epilogo standard (<code>push rbp</code> + <code>pop rbp</code>) anche per funzioni vuote. <code>clang++</code> elimina il frame pointer e inserisce solo <code>ret</code>, seguito da <strong>NOP padding</strong> per allineare la funzione successiva a 16 byte.
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- SEZIONE 2 -->
+  <section class="demo-section reveal" id="sezione2">
+    <div class="section-label">Sezione 2 di 3</div>
+    <div class="demo-header">
+      <div class="demo-number">02</div>
+      <div class="demo-meta">
+        <h3>Accedere a <span>variabili</span> tramite RBP</h3>
+        <p>Si legge il valore di RBP, poi si percorre lo stack a ritroso (decrementando un puntatore) finché non si incontra l'indirizzo di una variabile locale specifica. A quel punto la si sovrascrive direttamente, senza mai usare il suo nome.</p>
+        <div class="compiler-badges">
+          <span class="cbadge gpp">g++</span>
+          <span class="cbadge clang">clang++</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="note-box">
+      <div class="note-title">📌 Perché questo funziona</div>
+      Le variabili locali vivono nello stack frame in posizioni contigue. Conoscendo l'indirizzo di RBP e quello della variabile target, è sufficiente decrementare un puntatore di 8 byte per volta finché i due indirizzi coincidono — e poi scrivere lì.
+    </div>
+
+    <div class="warn-box">
+      <div class="note-title">⚠️ RBP non viene modificato</div>
+      Anche quando il puntatore <code>RBP</code> (copia C++ del registro) punta temporaneamente allo stesso indirizzo di <code>var</code>, il registro hardware <code>%%rbp</code> rimane invariato — come dimostrato rileggendolo a fine programma.
+    </div>
+
+    <div class="code-wrap">
+      <div class="code-topbar">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-filename">02_memory_hack.cpp</span>
+        <span class="code-lang">C++ / x86-64 ASM</span>
+      </div>
+      <pre><code class="language-cpp">#include &lt;iostream&gt;
+#include &lt;cstdint&gt;
+
+int main()
+{
+    long* RBP;
+    asm volatile (
+        "mov %%rbp, %0"
+        : "=r"(RBP)
+    );
+
+    std::cout &lt;&lt; "RBP: " &lt;&lt; RBP &lt;&lt; "\n";
+    long var = 10;
+
+    while (RBP != &amp;var) {
+        RBP -= 1;
+        std::cout &lt;&lt; "rbp - 1, rbp = " &lt;&lt; RBP &lt;&lt; "\n";
+    }
+
+    *RBP = 20;
+    std::cout &lt;&lt; var &lt;&lt; "\n";
+
+    asm volatile (
+        "mov %%rbp, %0"
+        : "=r"(RBP)
+    );
+    std::cout &lt;&lt; "RBP: " &lt;&lt; RBP &lt;&lt; "\n";
+}</code></pre>
+    </div>
+
+    <button class="output-toggle-btn" onclick="toggleOutput(this)">
+      <i class="arrow">▶</i> MOSTRA OUTPUT
+    </button>
+    <div class="output-panel">
+      <div class="output-inner">
+        <div class="output-bar">
+          <span class="output-bar-label">OUTPUT — 02_memory_hack</span>
+          <span class="output-bar-note">clang++ / g++ (risultato analogo)</span>
+        </div>
+        <pre class="output-pre"><span class="kw">RBP:</span> <span class="addr">0x1c84dffc20</span>
+rbp - 1, rbp = <span class="addr">0x1c84dffc1c</span>
+rbp - 1, rbp = <span class="addr">0x1c84dffc18</span>
+rbp - 1, rbp = <span class="addr">0x1c84dffc14</span>
+20
+<span class="kw">RBP:</span> <span class="addr">0x1c84dffc20</span></pre>
+      </div>
+    </div>
+  </section>
+
+  <hr class="section-divider">
+
+  <!-- SEZIONE 3 -->
+  <section class="demo-section reveal" id="sezione3">
+    <div class="section-label">Sezione 3 di 3</div>
+    <div class="demo-header">
+      <div class="demo-number">03</div>
+      <div class="demo-meta">
+        <h3>Loop tramite <span>Return Address</span></h3>
+        <p>Si crea un loop infinito senza usare <code>call</code> o istruzioni di salto esplicite: si intercetta il <em>return address</em> sullo stack e lo si sovrascrive con l'indirizzo della funzione stessa. Al <code>ret</code>, il programma torna all'inizio della funzione.</p>
+        <div class="compiler-badges">
+          <span class="cbadge gpp">g++ (GNUC)</span>
+          <span class="cbadge clang">clang++</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="note-box">
+      <div class="note-title">📌 Meccanismo — come funziona il return address</div>
+      Quando <code>call func</code> viene eseguita, la CPU fa automaticamente <code>push RIP</code> poi salta a <code>func</code>. Al <code>ret</code>, quella word viene rimessa in RIP via <code>pop</code>. Sostituendola con <code>&amp;func</code> prima del <code>ret</code>, si riporta il flusso all'inizio della funzione.
+    </div>
+
+    <div class="warn-box">
+      <div class="note-title">⚠️ Differenza g++ / clang++ — frame pointer</div>
+      <code>g++</code> genera prologo/epilogo espliciti (<code>push rbp</code> / <code>pop rbp</code>), quindi il return address non è in cima all'RSP all'ingresso. <code>clang++</code> con alcune ottimizzazioni omette il frame pointer, rendendo il return address immediatamente accessibile via <code>pop</code>. Per questo il codice usa <code>#ifdef __clang__</code>.
+    </div>
+
+    <div class="note-box">
+      <div class="note-title">📌 Memoria e ricorsività</div>
+      Ogni iterazione non libera il frame precedente dallo stack, quindi la memoria cresce — esattamente come nella ricorsione classica.
+    </div>
+
+    <div class="code-wrap">
+      <div class="code-topbar">
+        <div class="code-dots"><span></span><span></span><span></span></div>
+        <span class="code-filename">03_loop_assembly.cpp</span>
+        <span class="code-lang">C++ / x86-64 ASM</span>
+      </div>
+      <pre><code class="language-cpp">#include &lt;iostream&gt;
+#include &lt;cstdint&gt;
+
+void print(uint64_t* rbp)
+{
+    uint64_t rax, rbx, rcx;
+    uint64_t* rip;
+
+    asm(
+        "movq %%rax, %0\n\t"
+        "movq %%rbx, %1\n\t"
+        "movq %%rcx, %2\n\t"
+        "leaq (%%rip), %3\n\t"
+        : "=r"(rax), "=r"(rbx), "=r"(rcx), "=r"(rip)
+    );
+
+    std::cout &lt;&lt; "RBP: " &lt;&lt; rbp &lt;&lt; "\n";
+    std::cout &lt;&lt; "RAX: " &lt;&lt; rax &lt;&lt; "\n";
+    std::cout &lt;&lt; "RBX: " &lt;&lt; rbx &lt;&lt; "\n";
+    std::cout &lt;&lt; "RCX: " &lt;&lt; rcx &lt;&lt; "\n";
+    std::cout &lt;&lt; "RIP: " &lt;&lt; rip &lt;&lt; "\n";
+}
+
+void func()
+{
+#ifdef __clang__
+    uint64_t* rsp_iniziale;
+    void* RET_ADDR;
+
+    asm volatile (
+        "leaq (%%rsp), %0\n\t"
+        "pop %1\n\t"
+        : "=r"(rsp_iniziale), "=r"(RET_ADDR)
+    );
+
+    RET_ADDR = (void*)&amp;func;
+
+    asm volatile (
+        "mov %1, %%rsp\n\t"
+        "push %0\n\t"
+        : "=r"(RET_ADDR)
+        : "r"(rsp_iniziale)
+    );
+
+    std::cout &lt;&lt; "ritornado ad indirizzo " &lt;&lt; (void*)&amp;func &lt;&lt; " | RSP: " &lt;&lt; (uint64_t*)rsp_iniziale &lt;&lt; "\n";
+
+#elif __GNUC__
+    void* RBP;
+    void* RET_ADDR = (void*)&amp;func;
+    void* RSP_IA;
+
+    asm volatile (
+        "mov %%rsp, %0\n\t"
+        : "=m"(RSP_IA)
+    );
+
+    std::cout &lt;&lt; "ritornare a " &lt;&lt; RET_ADDR &lt;&lt; " | RSP: " &lt;&lt; (long*)RSP_IA &lt;&lt; "\n";
+
+    asm volatile (
+        "pop  %0\n\t"
+        "push %1\n\t"
+        "mov %2, %%rsp\n\t"
+        "ret    \n\t"
+        : "=m"(RBP), "=m"(RET_ADDR)
+        : "m"(RSP_IA)
+    );
+#endif
+}
+
+int main()
+{
+    std::cout &lt;&lt; "prima di func\n";
+    func();
+    std::cout &lt;&lt; "dopo func\n";
+    return 0;
+}</code></pre>
+    </div>
+
+    <button class="output-toggle-btn" onclick="toggleOutput(this)">
+      <i class="arrow">▶</i> MOSTRA OUTPUT
+    </button>
+    <div class="output-panel">
+      <div class="output-inner">
+        <div class="output-bar">
+          <span class="output-bar-label">OUTPUT — 03_loop_assembly</span>
+          <span class="output-bar-note">loop infinito — output troncato</span>
+        </div>
+        <pre class="output-pre">prima di func
+ritornado ad indirizzo <span class="addr">0x7ff7fea315b0</span> | RSP: <span class="addr">0x7ff7fea33191</span>
+ritornado ad indirizzo <span class="addr">0x7ff7fea315b0</span> | RSP: <span class="addr">0x7ff7fea33191</span>
+ritornado ad indirizzo <span class="addr">0x7ff7fea315b0</span> | RSP: <span class="addr">0x7ff7fea33191</span>
+ritornado ad indirizzo <span class="addr">0x7ff7fea315b0</span> | RSP: <span class="addr">0x7ff7fea33191</span>
+ritornado ad indirizzo <span class="addr">0x7ff7fea315b0</span> | RSP: <span class="addr">0x7ff7fea33191</span>
+[...]
+<span class="ellip">...</span></pre>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <span>ESAME DI MATURITÀ &nbsp;·&nbsp; x86-64 STACK HACKING &nbsp;·&nbsp; C++ INLINE ASSEMBLY</span>
+</footer>
+
+<script>
+  hljs.highlightAll();
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('visible');
+        observer.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.08 });
+
+  document.querySelectorAll('.reveal').forEach(el => observer.observe(el));
+
+  function toggleOutput(btn) {
+    const panel = btn.nextElementSibling;
+    const isOpen = panel.classList.toggle('open');
+    btn.classList.toggle('open', isOpen);
+    btn.innerHTML = isOpen
+      ? '<i class="arrow">▶</i> NASCONDI OUTPUT'
+      : '<i class="arrow">▶</i> MOSTRA OUTPUT';
+  }
+</script>
+</body>
+</html>
